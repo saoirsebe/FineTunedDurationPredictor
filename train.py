@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import json
 
@@ -13,3 +14,7 @@ trainingDataTable = pd.DataFrame({
     "time": [r["TimeTaken"][0]["EstimatedMinutes"] for r in records],
 })
 
+y = np.log(trainingDataTable["time"].values)
+mean, std = float(y.mean()), float(y.std())
+trainingDataTable["labels"] = ((y - mean) / std).astype("float32")
+json.dump({"mean": mean, "std": std}, open("target_stats.json", "w"))
