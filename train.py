@@ -28,13 +28,16 @@ mean, std = float(y.mean()), float(y.std())
 trainingDataTable["labels"] = ((y - mean) / std).astype("float32")
 json.dump({"mean": mean, "std": std}, open("target_stats.json", "w"))
 
-# Tokenising:
-train_df, val_df = train_test_split(trainingDataTable, test_size=0.2, random_state=42)
-
+# Splitting test data:
+test_ds, temp_ds = train_test_split(trainingDataTable, test_size=0.2, random_state=42)
+val_ds, test_ds = train_test_split(temp_ds, test_size=0.5, random_state=42)
 
 results = {}
 for name in candidates:
-    candidate_model = TrainSingleModel(model_name=name, train_df=train_df, val_df=val_df)
-    results[name] = candidate_model.trainModel()
+    print(f"\n=== Training {name} ===")
+    candidate_model = TrainSingleModel(model_name=name, train_ds=test_ds, val_ds=val_ds)
+    results[name] = candidate_model.train_and_evaluate(test_ds=test_ds)
 
 print(results)
+best_model = min(results, key=lambda k: results[k]["test_rmse"])
+print(f"\nBest candidate on held-out test set: {best_model}")

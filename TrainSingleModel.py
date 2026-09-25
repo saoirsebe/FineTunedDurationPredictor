@@ -5,23 +5,23 @@ from FreezeThenUnfreeze import FreezeThenUnfreeze
 
 
 class TrainSingleModel():
-    def __init__(self, model_name, train_df, val_df, seed=42):
+    def __init__(self, model_name, train_ds, val_ds, seed=42):
         self.model_name = model_name
-        self.train_df = train_df
-        self.val_df = val_df
+        self.train_ds = train_ds
+        self.val_ds = val_ds
         self.seed = seed
         # Unique, filesystem-safe output dir per candidate
         self.output_dir = f"out/{model_name.replace('/', '__')}"
 
-    def trainModel(self):
+    def train_and_evaluate(self, test_ds):
         set_seed(self.seed)
         tok = AutoTokenizer.from_pretrained(self.model_name)
 
         def prep(batch):
             return tok(batch["sentence"], truncation=True, max_length=128)
 
-        train_ds = Dataset.from_pandas(self.train_df[["sentence", "labels"]]).map(prep, batched=True)
-        val_ds = Dataset.from_pandas(self.val_df[["sentence", "labels"]]).map(prep, batched=True)
+        train_ds = Dataset.from_pandas(self.train_ds[["sentence", "labels"]]).map(prep, batched=True)
+        val_ds = Dataset.from_pandas(self.val_ds[["sentence", "labels"]]).map(prep, batched=True)
 
         # Loads pre-trained encoder and randomly initialises regression head
         model = AutoModelForSequenceClassification.from_pretrained(
@@ -40,12 +40,14 @@ class TrainSingleModel():
             save_total_limit=1,  # don't keep every epoch's checkpoint on disk
         )
 
-
         trainer = Trainer(model=model, args=args, train_dataset=train_ds,
                           eval_dataset=val_ds, processing_class=tok, compute_metrics=metrics,
                           callbacks=[FreezeThenUnfreeze(freeze_epochs=3)])
 
         trainer.train()
 
-        return trainer.evaluate()["eval_rmse"]
+        val_rmse = trainer.evaluate(val_ds)["eval_rmse"]
+        test_rmse = trainer.evaluate(test_ds)["eval_rmse"]  # unbiased comparison metric
+
+        return {"val_rmse": val_rmse, "test_rmse": test_rmse}
 
