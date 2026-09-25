@@ -6,6 +6,8 @@ from datasets import Dataset
 from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
 
+from FreezeThenUnfreeze import FreezeThenUnfreeze
+
 name = "sentence-transformers/all-MiniLM-L6-v2"
 
 with open("MS-LaTTE_split.json", encoding="utf-8") as f:
@@ -44,13 +46,15 @@ def metrics(p):
 
 
 args = TrainingArguments(
-    output_dir="out", num_train_epochs=5, learning_rate=2e-5,
+    output_dir="out", num_train_epochs=8, learning_rate=2e-5,
     per_device_train_batch_size=16, eval_strategy="epoch",
     save_strategy="epoch", load_best_model_at_end=True,
     metric_for_best_model="rmse", greater_is_better=False)
 
 trainer = Trainer(model=model, args=args, train_dataset=train_ds,
-                  eval_dataset=val_ds, tokenizer=tok, compute_metrics=metrics)
+                  eval_dataset=val_ds, tokenizer=tok, compute_metrics=metrics,
+                  callbacks=[FreezeThenUnfreeze(freeze_epochs=3)])
+
 trainer.train()
 
 trainer.save_model("final_model")
