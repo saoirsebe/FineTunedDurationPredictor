@@ -4,7 +4,7 @@ import json
 
 from datasets import Dataset
 from sklearn.model_selection import train_test_split
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
 
 name = "sentence-transformers/all-MiniLM-L6-v2"
 
@@ -41,3 +41,17 @@ model = AutoModelForSequenceClassification.from_pretrained(
 def metrics(p):
     predictions, labels = p.predictions.squeeze(), p.label_ids
     return {"rmse": float(np.sqrt(((predictions - labels) ** 2).mean()))}
+
+
+args = TrainingArguments(
+    output_dir="out", num_train_epochs=5, learning_rate=2e-5,
+    per_device_train_batch_size=16, eval_strategy="epoch",
+    save_strategy="epoch", load_best_model_at_end=True,
+    metric_for_best_model="rmse", greater_is_better=False)
+
+trainer = Trainer(model=model, args=args, train_dataset=train_ds,
+                  eval_dataset=val_ds, tokenizer=tok, compute_metrics=metrics)
+trainer.train()
+
+trainer.save_model("final_model")
+tok.save_pretrained("final_model")
