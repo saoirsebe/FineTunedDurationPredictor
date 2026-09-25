@@ -2,13 +2,17 @@ import numpy as np
 import pandas as pd
 import json
 
-from datasets import Dataset
+
 from sklearn.model_selection import train_test_split
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
 
-from FreezeThenUnfreeze import FreezeThenUnfreeze
+from TrainSingleModel import TrainSingleModel
 
-name = "sentence-transformers/all-MiniLM-L6-v2"
+candidates = [
+    "sentence-transformers/all-MiniLM-L6-v2",   # 22M, current baseline
+    "distilbert-base-uncased",                   # 66M, general-purpose
+    "bert-base-uncased",                          # 110M, general-purpose
+    "microsoft/deberta-v3-small",                 # 44M, strong for its size
+]
 
 with open("MS-LaTTE_split.json", encoding="utf-8") as f:
     records = json.load(f)
@@ -27,35 +31,10 @@ json.dump({"mean": mean, "std": std}, open("target_stats.json", "w"))
 # Tokenising:
 train_df, val_df = train_test_split(trainingDataTable, test_size=0.2, random_state=42)
 
-tok = AutoTokenizer.from_pretrained(name)
 
-def prep(batch):
-    return tok(batch["sentence"], truncation=True, max_length=128)
+results = {}
+for name in candidates:
+    candidate_model = TrainSingleModel(model_name=name, train_df=train_df, val_df=val_df)
+    results[name] = candidate_model.trainModel()
 
-train_ds = Dataset.from_pandas(train_df[["sentence", "labels"]]).map(prep, batched=True)
-val_ds = Dataset.from_pandas(val_df[["sentence", "labels"]]).map(prep, batched=True)
-
-
-# Loads pre-trained encoder and randomly initialises regression head
-model = AutoModelForSequenceClassification.from_pretrained(
-    name, num_labels=1, problem_type="regression")
-
-def metrics(p):
-    predictions, labels = p.predictions.squeeze(), p.label_ids
-    return {"rmse": float(np.sqrt(((predictions - labels) ** 2).mean()))}
-
-
-args = TrainingArguments(
-    output_dir="out", num_train_epochs=8, learning_rate=2e-5,
-    per_device_train_batch_size=16, eval_strategy="epoch",
-    save_strategy="epoch", load_best_model_at_end=True,
-    metric_for_best_model="rmse", greater_is_better=False)
-
-trainer = Trainer(model=model, args=args, train_dataset=train_ds,
-                  eval_dataset=val_ds, tokenizer=tok, compute_metrics=metrics,
-                  callbacks=[FreezeThenUnfreeze(freeze_epochs=3)])
-
-trainer.train()
-
-trainer.save_model("final_model")
-tok.save_pretrained("final_model")
+print(results)
