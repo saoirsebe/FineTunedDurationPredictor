@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer, set_seed
 from datasets import Dataset
@@ -5,21 +7,33 @@ from FreezeThenUnfreeze import FreezeThenUnfreeze
 from scipy.stats import spearmanr
 
 class TrainSingleModel:
-    def __init__(self, model_name, train_ds, val_ds, test_ds, seed=42):
+    def __init__(self, model_name, train_ds, val_ds, test_ds, load_final = False):
         self.model_name = model_name
-        self.train_ds = train_ds
-        self.val_ds = val_ds
-        self.test_ds = test_ds
-        self.seed = seed
-        # Unique, filesystem-safe output dir per candidate
-        self.output_dir = f"out/{model_name.replace('/', '__')}"
+        self.train_ds = self._prepare_dataset(train_ds)
+        self.val_ds =  self._prepare_dataset(val_ds)
+        self.test_ds = self._prepare_dataset(test_ds)
+
+        self.output_dir = Path("out") / model_name.replace("/", "__") # Unique, filesystem-safe output dir per candidate
+        self.final_dir = self.output_dir / "final"
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name,
             use_fast=False
         )
         self.model = None
+        self._model_initialisation(load_final)
+
         self.trainer = None
+
+    def _model_initialisation(self, load_final = False):
+        if load_final:
+            self._load_final_model()
+        else:
+            # Loads pre-trained encoder and randomly initialises regression head
+            self.model = AutoModelForSequenceClassification.from_pretrained(
+                self.model_name, num_labels=1, problem_type="regression")
+
+
 
     def _prepare_dataset(self, dataframe):
         """
@@ -38,23 +52,15 @@ class TrainSingleModel:
                 max_length=128,
             )
 
-        dataset = dataset.map(
+        return dataset.map(
             tokenize,
             batched=True,
         )
 
-        return dataset
 
-    def train_and_evaluate(self):
-        set_seed(self.seed)
-
-        train_ds = self._prepare_dataset(self.train_ds)
-        val_ds = self._prepare_dataset(self.val_ds)
-        test_ds = self._prepare_dataset(self.test_ds)
-
-        # Loads pre-trained encoder and randomly initialises regression head
-        model = AutoModelForSequenceClassification.from_pretrained(
-            self.model_name, num_labels=1, problem_type="regression")
+    def train(self, is_seed_set = False, seed = 42):
+        if is_seed_set:
+            set_seed(seed)
 
         def metrics(p):
             predictions, labels = p.predictions.squeeze(), p.label_ids
@@ -69,67 +75,55 @@ class TrainSingleModel:
             save_total_limit=1,  # don't keep every epoch's checkpoint on disk
         )
 
-        trainer = Trainer(model=model, args=args, train_dataset=train_ds,
-                          eval_dataset=val_ds, processing_class=self.tokenizer, compute_metrics=metrics,
+        self.trainer = Trainer(model=self.model, args=args, train_dataset=self.train_ds,
+                          eval_dataset=self.val_ds, processing_class=self.tokenizer, compute_metrics=metrics,
                           callbacks=[FreezeThenUnfreeze(freeze_epochs=3)])
 
-        trainer.train()
+        self.trainer.train()
 
-        val_rmse = trainer.evaluate(val_ds)["eval_rmse"]
-        test_rmse = trainer.evaluate(test_ds)["eval_rmse"]  # unbiased comparison metric
 
+    def evaluate(self):
+        val_rmse = self.trainer.evaluate(self.val_ds)["eval_rmse"]
+        test_rmse = self.trainer.evaluate(self.test_ds)["eval_rmse"]  # unbiased comparison metric
 
         return {"val_rmse": val_rmse, "test_rmse": test_rmse}
 
-    def train_and_save(self):
 
+    def save_final_model(self):
+        """
+        Save model + tokenizer to:
+            output_dir/final/
+        """
 
-        train_ds = self._prepare_dataset(self.train_ds)
-        val_ds = self._prepare_dataset(self.val_ds)
-        test_ds = self._prepare_dataset(self.test_ds)
+        if self.trainer is None:
+            raise RuntimeError("No Trainer exists. Train or load the model before saving.")
 
-        # Loads pre-trained encoder and randomly initialises regression head
-        model = AutoModelForSequenceClassification.from_pretrained(
-            self.model_name, num_labels=1, problem_type="regression")
+        self.final_dir.mkdir(parents=True, exist_ok=True)
 
-        def metrics(p):
-            predictions, labels = p.predictions.squeeze(), p.label_ids
-            return {"rmse": float(np.sqrt(((predictions - labels) ** 2).mean()))}
+        self.trainer.save_model(str(self.final_dir))
+        self.tokenizer.save_pretrained(str(self.final_dir))
 
-        args = TrainingArguments(
-            output_dir=self.output_dir, num_train_epochs=8, learning_rate=2e-5,
-            per_device_train_batch_size=16, eval_strategy="epoch",
-            save_strategy="epoch", load_best_model_at_end=True,
-            metric_for_best_model="rmse", greater_is_better=False,
-            report_to="none",  # skip wandb/tensorboard prompts
-            save_total_limit=1,  # don't keep every epoch's checkpoint on disk
+        print(f"Saved final model to: {self.final_dir}")
+
+    def _load_final_model(self):
+        """
+        Load the final saved model.
+        """
+
+        if not self.final_dir.exists():
+            raise FileNotFoundError(
+                f"No final model found at: {self.final_dir}"
+            )
+
+        print(f"Loading final model from: {self.final_dir}")
+
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            str(self.final_dir),
+            num_labels=1,
+            problem_type="regression",
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            str(self.final_dir),
+            use_fast=False,
         )
 
-        trainer = Trainer(model=model, args=args, train_dataset=train_ds,
-                          eval_dataset=val_ds, processing_class=self.tokenizer, compute_metrics=metrics,
-                          callbacks=[FreezeThenUnfreeze(freeze_epochs=3)])
-
-        trainer.train()
-
-        val_rmse = trainer.evaluate(val_ds)["eval_rmse"]
-        test_rmse = trainer.evaluate(test_ds)["eval_rmse"]  # unbiased comparison metric
-
-        print(f"\nValidation eval: {val_rmse}")
-        print(f"\nTest eval: {test_rmse}")
-
-        trainer.save_model("final_model")
-        self.tokenizer.save_pretrained("final_model")
-
-    def report(self, pred_z, true_minutes, mean, std):
-        pred = np.exp(pred_z * std + mean)
-        err = pred - true_minutes
-        ratio = np.maximum(pred / true_minutes, true_minutes / pred)
-        return {
-            "MAE_min": np.abs(err).mean(),
-            "MedAE_min": np.median(np.abs(err)),
-            "RMSE_min": np.sqrt((err ** 2).mean()),
-            "MAE_log": np.abs(np.log(pred) - np.log(true_minutes)).mean(),
-            "within_1.5x": (ratio <= 1.5).mean(),
-            "within_2x": (ratio <= 2).mean(),
-            "spearman": spearmanr(pred, true_minutes).correlation,
-        }

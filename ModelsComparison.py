@@ -35,7 +35,8 @@ results = {}
 for name in candidates:
     print(f"\n=== Training {name} ===")
     candidate_model = TrainSingleModel(model_name=name, train_ds=train_ds, test_ds=test_ds, val_ds=val_ds)
-    results[name] = candidate_model.train_and_evaluate()
+    candidate_model.train(is_seed_set=True)
+    results[name] = candidate_model.evaluate()
 
 
 print(results)
