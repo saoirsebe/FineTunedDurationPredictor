@@ -1,0 +1,13 @@
+# Virtual environment
+.venv/
+venv/
+
+# Training/output files
+out/
+
+# PyTorch model files
+*.pt
+
+# Python cache
+__pycache__/
+*.py[cod]
