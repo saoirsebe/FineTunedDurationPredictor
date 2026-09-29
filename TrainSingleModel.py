@@ -7,11 +7,9 @@ from FreezeThenUnfreeze import FreezeThenUnfreeze
 from scipy.stats import spearmanr
 
 class TrainSingleModel:
-    def __init__(self, model_name, train_ds, val_ds, test_ds, load_final = False):
+    def __init__(self, model_name, train_ds, val_ds, test_ds, load_final = False, max_length=128):
         self.model_name = model_name
-        self.train_ds = self._prepare_dataset(train_ds)
-        self.val_ds =  self._prepare_dataset(val_ds)
-        self.test_ds = self._prepare_dataset(test_ds)
+        self.max_length = max_length
 
         self.output_dir = Path("out") / model_name.replace("/", "__") # Unique, filesystem-safe output dir per candidate
         self.final_dir = self.output_dir / "final"
@@ -20,10 +18,15 @@ class TrainSingleModel:
             self.model_name,
             use_fast=False
         )
+
+        self.train_ds = self._prepare_dataset(train_ds)
+        self.val_ds = self._prepare_dataset(val_ds)
+        self.test_ds = self._prepare_dataset(test_ds)
+        
         self.model = None
         self._model_initialisation(load_final)
 
-        self.trainer = None
+        self.trainer = self._create_trainer(initial_training=not load_final)
 
     def _model_initialisation(self, load_final = False):
         if load_final:
@@ -40,6 +43,12 @@ class TrainSingleModel:
         Convert a pandas DataFrame into a tokenised Hugging Face Dataset.
         """
 
+        required_columns = {"sentence", "labels"}
+        missing = required_columns - set(dataframe.columns)
+        if missing: raise ValueError(
+            f"Missing required columns: {sorted(missing)}"
+        )
+
         dataset = Dataset.from_pandas(
             dataframe[["sentence", "labels"]],
             preserve_index=False,
@@ -49,7 +58,7 @@ class TrainSingleModel:
             return self.tokenizer(
                 batch["sentence"],
                 truncation=True,
-                max_length=128,
+                max_length=self.max_length,
             )
 
         return dataset.map(
@@ -62,31 +71,30 @@ class TrainSingleModel:
         if is_seed_set:
             set_seed(seed)
 
-        def metrics(p):
-            predictions, labels = p.predictions.squeeze(), p.label_ids
-            return {"rmse": float(np.sqrt(((predictions - labels) ** 2).mean()))}
-
-        args = TrainingArguments(
-            output_dir=self.output_dir, num_train_epochs=8, learning_rate=2e-5,
-            per_device_train_batch_size=16, eval_strategy="epoch",
-            save_strategy="epoch", load_best_model_at_end=True,
-            metric_for_best_model="rmse", greater_is_better=False,
-            report_to="none",  # skip wandb/tensorboard prompts
-            save_total_limit=1,  # don't keep every epoch's checkpoint on disk
-        )
-
-        self.trainer = Trainer(model=self.model, args=args, train_dataset=self.train_ds,
-                          eval_dataset=self.val_ds, processing_class=self.tokenizer, compute_metrics=metrics,
-                          callbacks=[FreezeThenUnfreeze(freeze_epochs=3)])
-
         self.trainer.train()
 
 
     def evaluate(self):
+        if self.trainer is None:
+            raise RuntimeError("No Trainer exists. Train or load the model before evaluating.")
+
         val_rmse = self.trainer.evaluate(self.val_ds)["eval_rmse"]
         test_rmse = self.trainer.evaluate(self.test_ds)["eval_rmse"]  # unbiased comparison metric
 
         return {"val_rmse": val_rmse, "test_rmse": test_rmse}
+
+    def full_evaluation(self):
+        if self.trainer is None:
+            raise RuntimeError("No Trainer exists. Train or load the model before evaluating.")
+
+        val_metrics = self.trainer.evaluate(
+            eval_dataset=self.val_ds, metric_key_prefix="val",
+        )
+        test_metrics = self.trainer.evaluate(
+            eval_dataset=self.test_ds, metric_key_prefix="test",
+        )
+        return {"val_rmse": val_metrics["val_rmse"], "val_spearman": val_metrics["val_spearman"],
+                "test_rmse": test_metrics["test_rmse"], "test_spearman": test_metrics["test_spearman"], }
 
 
     def save_final_model(self):
@@ -125,5 +133,49 @@ class TrainSingleModel:
         self.tokenizer = AutoTokenizer.from_pretrained(
             str(self.final_dir),
             use_fast=False,
+        )
+
+
+    def _create_trainer(self, initial_training=False):
+        args = TrainingArguments(
+            output_dir=str(self.output_dir),
+            num_train_epochs=8,
+            learning_rate=2e-5,
+            per_device_train_batch_size=16,
+            eval_strategy="epoch",
+            save_strategy="epoch",
+            load_best_model_at_end=True,
+            metric_for_best_model="rmse",
+            greater_is_better=False,
+            report_to="none",  # skip wandb/tensorboard prompts
+            save_total_limit=1,  # don't keep every epoch's checkpoint on disk
+        )
+        callbacks = []
+
+        # Only use the freeze/unfreeze callback when training newly initialised model.
+        if initial_training:
+            callbacks.append(
+                FreezeThenUnfreeze(freeze_epochs=3)
+            )
+
+        def _metrics(p):
+            predictions, labels = p.predictions.squeeze(), p.label_ids
+            rmse = np.sqrt(np.mean((predictions - labels) ** 2))
+            spearman = spearmanr(predictions, labels).statistic
+
+            return {
+                "rmse": float(rmse),
+                "spearman": float(spearman),
+            }
+
+
+        return Trainer(
+            model=self.model,
+            args=args,
+            train_dataset=self.train_ds,
+            eval_dataset=self.val_ds,
+            processing_class=self.tokenizer,
+            compute_metrics=_metrics,
+            callbacks=callbacks,
         )
 
