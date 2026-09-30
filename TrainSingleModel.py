@@ -78,15 +78,6 @@ class TrainSingleModel:
         if self.trainer is None:
             raise RuntimeError("No Trainer exists. Train or load the model before evaluating.")
 
-        val_rmse = self.trainer.evaluate(self.val_ds)["eval_rmse"]
-        test_rmse = self.trainer.evaluate(self.test_ds)["eval_rmse"]  # unbiased comparison metric
-
-        return {"val_rmse": val_rmse, "test_rmse": test_rmse}
-
-    def full_evaluation(self):
-        if self.trainer is None:
-            raise RuntimeError("No Trainer exists. Train or load the model before evaluating.")
-
         val_metrics = self.trainer.evaluate(
             eval_dataset=self.val_ds, metric_key_prefix="val",
         )
