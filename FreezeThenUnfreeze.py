@@ -8,10 +8,14 @@ class FreezeThenUnfreeze(TrainerCallback):
         for p in model.base_model.parameters():   # the encoder, without the head
             p.requires_grad = trainable
         n = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
         print(f"Encoder trainable={trainable} | trainable params: {n:,}")
 
     def on_train_begin(self, args, state, control, model=None, **kw):
         self._set_encoder_trainable(model, False)
+        #args.warmup_ratio=0.1
+
+
 
     def on_epoch_begin(self, args, state, control, model=None, **kw):
         if int(state.epoch) == self.freeze_epochs:

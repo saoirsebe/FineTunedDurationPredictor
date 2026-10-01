@@ -5,11 +5,15 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trai
 from datasets import Dataset
 from FreezeThenUnfreeze import FreezeThenUnfreeze
 from scipy.stats import spearmanr
+from transformers import EarlyStoppingCallback
 
 class TrainSingleModel:
     def __init__(self, model_name, train_ds, val_ds, test_ds, load_final = False, max_length=128):
+        self.learning_rate = 2e-5
         self.model_name = model_name
         self.max_length = max_length
+        self.frozen_epochs = 3
+        self.training_epochs = 8
 
         self.output_dir = Path("out") / model_name.replace("/", "__") # Unique, filesystem-safe output dir per candidate
         self.final_dir = self.output_dir / "final"
@@ -127,11 +131,11 @@ class TrainSingleModel:
         )
 
 
-    def _create_trainer(self, initial_training=False):
+    def _create_trainer(self, initial_training=True):
         args = TrainingArguments(
             output_dir=str(self.output_dir),
-            num_train_epochs=8,
-            learning_rate=2e-5,
+            num_train_epochs=self.training_epochs,
+            learning_rate=self.learning_rate,
             per_device_train_batch_size=16,
             eval_strategy="epoch",
             save_strategy="epoch",
@@ -141,12 +145,12 @@ class TrainSingleModel:
             report_to="none",  # skip wandb/tensorboard prompts
             save_total_limit=1,  # don't keep every epoch's checkpoint on disk
         )
-        callbacks = []
+        callbacks = [EarlyStoppingCallback(early_stopping_patience=3)]
 
         # Only use the freeze/unfreeze callback when training newly initialised model.
         if initial_training:
             callbacks.append(
-                FreezeThenUnfreeze(freeze_epochs=3)
+                FreezeThenUnfreeze(freeze_epochs=self.frozen_epochs)
             )
 
         def _metrics(p):
@@ -170,3 +174,14 @@ class TrainSingleModel:
             callbacks=callbacks,
         )
 
+    def set_frozen_epochs(self, frozen_epochs, initial_training = True):
+        self.frozen_epochs = frozen_epochs
+        self.trainer = self._create_trainer(initial_training=initial_training)
+
+    def set_training_epochs(self, training_epochs, initial_training = True):
+        self.training_epochs = training_epochs
+        self.trainer = self._create_trainer(initial_training=initial_training)
+
+    def set_learning_rate(self, learning_rate, initial_training = True):
+        self.learning_rate = learning_rate
+        self.trainer = self._create_trainer(initial_training=initial_training)
