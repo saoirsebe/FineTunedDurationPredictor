@@ -144,6 +144,7 @@ class TrainSingleModel:
             greater_is_better=False,
             report_to="none",  # skip wandb/tensorboard prompts
             save_total_limit=1,  # don't keep every epoch's checkpoint on disk
+            weight_decay=0.01,
         )
         callbacks = [EarlyStoppingCallback(early_stopping_patience=3)]
 
