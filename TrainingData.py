@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 
 class TrainingData:
     def __init__(self):
-        self.dataset = "MS-LaTTE_split.json"
+        self.dataset = "MS-LaTTE_cleaned_first500_reviewed.json"
 
     def getTrainingSets(self):
         with open(self.dataset, encoding="utf-8") as f:

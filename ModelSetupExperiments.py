@@ -1,4 +1,6 @@
 import numpy as np
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
 from TrainSingleModel import TrainSingleModel
 from TrainingData import TrainingData
 
@@ -40,14 +42,23 @@ def warmup_ratio():
 
     """
     Without warmup_ratio: 2e-05: {'val_rmse': 0.5994768142700195, 'val_spearman': 0.7439444829792587, 'test_rmse': 0.5779285430908203, 'test_spearman': 0.7476010620608693} 
-    With: 
+    With: {'val_rmse': 0.6049124002456665, 'val_spearman': 0.7407127265522565, 'test_rmse': 0.5856354832649231, 'test_spearman': 0.7378694382615865}
     """
 
-warmup_ratio()
 
 def weight_decay():
     print(f"\n=== Training with weight_decay = 0.01 ===")
     candidate_model = TrainSingleModel(model_name="bert-base-uncased", train_ds=train_ds, test_ds=test_ds, val_ds=val_ds)
+    candidate_model.set_weight_decay(0.01)
     candidate_model.train(is_seed_set=True)
     results = candidate_model.evaluate()
     print(results)
+    candidate_model.save_final_model()
+
+    """
+        Without weight_decay: {'val_rmse': 0.5994768142700195, 'val_spearman': 0.7439444829792587, 'test_rmse': 0.5779285430908203, 'test_spearman': 0.7476010620608693} 
+        With: {'val_rmse': 0.6063610315322876, 'val_spearman': 0.7412223678403477, 'test_rmse': 0.5815166234970093, 'test_spearman': 0.7482193633846979}
+
+    """
+
+weight_decay()

@@ -32,6 +32,7 @@ class TrainSingleModel:
 
         self.trainer = self._create_trainer(initial_training=not load_final)
 
+
     def _model_initialisation(self, load_final = False):
         if load_final:
             self._load_final_model()
@@ -39,7 +40,6 @@ class TrainSingleModel:
             # Loads pre-trained encoder and randomly initialises regression head
             self.model = AutoModelForSequenceClassification.from_pretrained(
                 self.model_name, num_labels=1, problem_type="regression")
-
 
 
     def _prepare_dataset(self, dataframe):
@@ -131,7 +131,7 @@ class TrainSingleModel:
         )
 
 
-    def _create_trainer(self, initial_training=True):
+    def _create_trainer(self, initial_training=True, extraArgs = []):
         args = TrainingArguments(
             output_dir=str(self.output_dir),
             num_train_epochs=self.training_epochs,
@@ -144,7 +144,6 @@ class TrainSingleModel:
             greater_is_better=False,
             report_to="none",  # skip wandb/tensorboard prompts
             save_total_limit=1,  # don't keep every epoch's checkpoint on disk
-            weight_decay=0.01,
         )
         callbacks = [EarlyStoppingCallback(early_stopping_patience=3)]
 
@@ -179,10 +178,17 @@ class TrainSingleModel:
         self.frozen_epochs = frozen_epochs
         self.trainer = self._create_trainer(initial_training=initial_training)
 
-    def set_training_epochs(self, training_epochs, initial_training = True):
+    def set_training_epochs(self, training_epochs):
         self.training_epochs = training_epochs
-        self.trainer = self._create_trainer(initial_training=initial_training)
+        self.trainer.args.training_epochs = training_epochs
 
-    def set_learning_rate(self, learning_rate, initial_training = True):
+    def set_learning_rate(self, learning_rate):
         self.learning_rate = learning_rate
-        self.trainer = self._create_trainer(initial_training=initial_training)
+        self.trainer.args.learning_rate = learning_rate
+
+    def set_weight_decay(self, weight_decay):
+        self.trainer.args.weight_decay= weight_decay
+
+    def set_warmup_ratio(self,warmup_ratio):
+        self.trainer.args.warmup_ratio = warmup_ratio
+

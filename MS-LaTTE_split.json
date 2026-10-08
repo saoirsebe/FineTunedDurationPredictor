@@ -7165,7 +7165,7 @@
   },
   {
     "ID": "5677736",
-    "TaskTitle": "hw #0",
+    "TaskTitle": "finish homework",
     "ListTitle": "school",
     "LocJudgements": [
       {
@@ -7214,7 +7214,7 @@
   },
   {
     "ID": "5677736_2",
-    "TaskTitle": "homework #0",
+    "TaskTitle": "do homework",
     "ListTitle": "school",
     "LocJudgements": [
       {
@@ -7257,7 +7257,7 @@
     ],
     "TimeTaken": [
       {
-        "EstimatedMinutes": 35
+        "EstimatedMinutes": 40
       }
     ]
   },
@@ -7851,7 +7851,7 @@
   },
   {
     "ID": "4678922",
-    "TaskTitle": "tissue paper flowers",
+    "TaskTitle": "make tissue paper flowers",
     "ListTitle": "default list",
     "LocJudgements": [
       {
@@ -7900,7 +7900,7 @@
   },
   {
     "ID": "4678922_2",
-    "TaskTitle": "tissue document blooms",
+    "TaskTitle": "make origami flowers",
     "ListTitle": "default list",
     "LocJudgements": [
       {
@@ -7943,7 +7943,7 @@
     ],
     "TimeTaken": [
       {
-        "EstimatedMinutes": 110
+        "EstimatedMinutes": 50
       }
     ]
   },

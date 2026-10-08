@@ -19,5 +19,5 @@ class FreezeThenUnfreeze(TrainerCallback):
     def on_epoch_begin(self, args, state, control, model=None, **kw):
         if int(state.epoch) == self.freeze_epochs:
             self._set_encoder_trainable(model, True)
-            args.warmup_ratio = 0.1
+            # args.warmup_ratio = 0.1
 
